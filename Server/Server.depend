@@ -1,0 +1,20 @@
+# depslib dependency file v1.0
+1552066296 source:d:\utilisateurs\valentin\bureau\esilv\advance network prog\project network\server\main.c
+	<winsock2.h>
+	<sys/socket.h>
+	<netinet/in.h>
+	<arpa/inet.h>
+	<unistd.h>
+	<errno.h>
+	<sys/types.h>
+	<netdb.h>
+	"sqlite3.h"
+	<dirent.h>
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	<pthread.h>
+
+1552054405 d:\utilisateurs\valentin\bureau\esilv\advance network prog\project network\server\sqlite3.h
+	<stdarg.h>
+
