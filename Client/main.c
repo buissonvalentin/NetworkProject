@@ -120,9 +120,12 @@ void ReadUserCommand(SOCKET sock){
         scanf("%s", input);
 
         if(strcmp(input, cmdExit) == 0){
+            if(send(sock, cmdExit, buffLength, 0) == SOCKET_ERROR){
+                printf(ERR_SND);
+            }
             end = 0;
             printf("Closing connection\n");
-            //closesocket();
+            closesocket(sock);
         }
         else if(strcmp(input, cmdHelp) == 0){
             printf("%s : Close Connection\n", cmdExit);

@@ -302,7 +302,7 @@ void *connection_handler(void *socket_desc){
                 char msg[buffLength] = "Public message from ";
                 printf("%s requested", cmdPublicMsg);
                 if(recv(sock, buff, buffLength, 0) != SOCKET_ERROR){
-//                    strcat(msg, bddUsernames[index]);
+                    strcat(msg, usernames[index]);
                     strcat(msg, " : ");
                     strcat(msg, buff);
                     SendToAll(msg);
@@ -318,8 +318,9 @@ void *connection_handler(void *socket_desc){
             }
         }
     }
+    printf("User disconnected : %s", usernames[index]);
     connectedUsers[index] = -1;
-
+    printf("Thread finished");
 }
 
 
@@ -448,6 +449,8 @@ int CheckCredentials(char username[], char password[]){
     return result;
 }
 
+
+// Return a list of all connected users
 const char* GetConnectedUsers(){
     char list[] = "";
     char* l = "";
@@ -468,6 +471,8 @@ const char* GetConnectedUsers(){
     return l;
 }
 
+
+// Send message to all sockets in the socket array
 void SendToAll(char* msg){
     for(int i = 0; i < 50; i++){
         if(connectedUsers[i] >= 0){
@@ -476,6 +481,8 @@ void SendToAll(char* msg){
     }
 }
 
+
+// Return index of socket array of user name
 int GetUserSocketIndex(char username[]){
     int index = -1;
     char *sql;
@@ -494,7 +501,7 @@ int GetUserSocketIndex(char username[]){
 }
 
 
-
+// Return a list of all files in current directory
 const char* GetFilesList(){
     DIR *d;
     char *listFiles;
@@ -504,28 +511,13 @@ const char* GetFilesList(){
     {
         while ((dir = readdir(d)) != NULL)
         {
-            //printf("%s\n", dir->d_name);
             strcat(listFiles, dir->d_name);
             strcat(listFiles, "\n");
 
         }
         closedir(d);
     }
-
     return listFiles;
-}
-
-
-
-int callback(void *NotUsed, int argc, char **argv,char **azColName)
-{
-    printf("call back 1");
-    NotUsed = 0;
-    for (int i = 0; i < argc; i++) {
-        printf(" %s = %s ", azColName[i], argv[i] ? argv[i] : "NULL");
-     }
-    printf("\n");
-    return 0;
 }
 
 
