@@ -136,13 +136,11 @@ void ReadUserCommand(SOCKET sock){
         }
         else if(strcmp(input, cmdListUsers) == 0){
             // List users
-            char mbuff[buffLength] = "";
             if(send(sock, cmdListUsers, buffLength, 0) != SOCKET_ERROR){
-                //err = recv(sock, mbuff, buffLength, 0);
                 if(err != SOCKET_ERROR){
                 }
                 else{
-                   // printf(ERR_RCV);
+                    printf(ERR_RCV);
                 }
             }
             else{
@@ -239,7 +237,7 @@ void ReadUserCommand(SOCKET sock){
             // Public Message
             char message[buffLength];
             printf("Message : ");
-            gets(message);
+            scanf("%s", message);
 
             if(send(sock, cmdPublicMsg, buffLength, 0) != SOCKET_ERROR){
                 if(send(sock, message, buffLength, 0) == SOCKET_ERROR){

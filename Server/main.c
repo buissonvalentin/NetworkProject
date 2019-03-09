@@ -48,16 +48,16 @@
 sqlite3 *db;
 int connectIndex;
 SOCKET connectedUsers[50];
-
+char (*usernames[50])[100];
 
 //functions
 int GetTypeOfConnection();
 const char* GetConnectedUsers();
 int CheckCredentials(char username[], char password[]);
+void ConnectUser(SOCKET sock, int *index);
 void *connection_handler(void *socket_desc);
 void CreateBDD();
 void SendToAll(char* msg);
-void SendToUser(char* user, char* msg);
 const char* GetFilesList();
 int callback(void *NotUsed, int argc, char **argv,char **azColName);
 
@@ -202,7 +202,7 @@ void *connection_handler(void *socket_desc){
     int finnish = -1;
     int err = -1;
     ConnectUser(sock, &index);
-    //printf("%s Connected\n", bddUsernames[index]);
+    printf("%s Connected\n", usernames[index]);
 
 
 
@@ -211,13 +211,11 @@ void *connection_handler(void *socket_desc){
 
             if(strcmp(buff, cmdListUsers) == 0){
                 printf("%s requested\n", cmdListUsers);
-
                 char *list;
                 list = GetConnectedUsers();
                 char buff[buffLength]= "";
                 strcat(buff, "List users : ");
                 strcat(buff, list);
-                printf("%s", buff);
 
                 int err = send(sock, buff, buffLength, 0);
                 if(err == SOCKET_ERROR){
@@ -287,13 +285,15 @@ void *connection_handler(void *socket_desc){
                 char userdest[buffLength];
                 char message[buffLength];
                 char msg[buffLength] = "Private message from ";
+
                 if(recv(sock, userdest, buffLength, 0) != SOCKET_ERROR){
                     if(recv(sock, message, buffLength, 0) != SOCKET_ERROR){
-//                        strcat(msg, bddUsernames[index]);
+                        strcat(msg, usernames[index]);
                         strcat(msg, " : ");
                         strcat(msg, message);
                         printf("sending %s to %s\n", msg, userdest);
-                        SendToUser(userdest, msg);
+                        int destIndex = GetUserSocketIndex(userdest);
+                        send(connectedUsers[destIndex], msg, buffLength, 0);
                     }
                 }
             }
@@ -319,7 +319,6 @@ void *connection_handler(void *socket_desc){
         }
     }
     connectedUsers[index] = -1;
-//    printf("%s Disconnected", bddUsernames[index]);
 
 }
 
@@ -361,7 +360,7 @@ void CreateBDD(){
 
 
 // Connect user into database and set socket at index
-void ConnectUser(SOCKET sock){
+void ConnectUser(SOCKET sock, int *index){
     int connected = -1;
     while(connected < 0){
         char username[buffLength];
@@ -385,6 +384,8 @@ void ConnectUser(SOCKET sock){
                 itoa(connected, buff, 10);
                 if(send(sock, buff, buffLength, 0) != SOCKET_ERROR){
                     connectedUsers[connectIndex] = sock;
+                    *index = connectIndex;
+                    usernames[connectIndex] = username;
                     connectIndex++;
                 }
                 else{
@@ -448,23 +449,23 @@ int CheckCredentials(char username[], char password[]){
 }
 
 const char* GetConnectedUsers(){
-    printf("Getting list");
-    char *listU;
+    char list[] = "";
+    char* l = "";
     char *sql;
     int step;
     sqlite3_stmt *res;
 
     sql = "SELECT username FROM user WHERE socketIndex > ?";
     int rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
-    sqlite3_bind_int(res, 1, 0);
+    sqlite3_bind_int(res, 1, -1);
 
     while ((step = sqlite3_step(res) == SQLITE_ROW)){
-        printf("%s",sqlite3_column_text(res, 0));
-        strcat(listU, sqlite3_column_text(res, 0));
-        strcat(listU, "\n");
+        strcat(list, sqlite3_column_text(res, 0));
+        strcat(list, "\n");
     }
 
-    return listU;
+    l = list;
+    return l;
 }
 
 void SendToAll(char* msg){
@@ -475,16 +476,24 @@ void SendToAll(char* msg){
     }
 }
 
-void SendToUser(char* user, char* msg){
-    for(int i = 0; i < 50; i++){
-       // if(strcmp(user, *bddUsernames[i]) == 0)
-       {
-            if(send(connectedUsers[i],msg, buffLength, 0) == SOCKET_ERROR){
-                printf(ERR_SND);
-            }
-        }
+int GetUserSocketIndex(char username[]){
+    int index = -1;
+    char *sql;
+    int step;
+    sqlite3_stmt *res;
+
+    sql = "SELECT socketIndex FROM user WHERE username = ?";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+    sqlite3_bind_text(res, 1, username, -1, SQLITE_TRANSIENT);
+
+    while ((step = sqlite3_step(res) == SQLITE_ROW)){
+        index = sqlite3_column_int(res, 0);
     }
+
+    return index;
 }
+
+
 
 const char* GetFilesList(){
     DIR *d;
