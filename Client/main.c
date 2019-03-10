@@ -108,6 +108,7 @@ int GetTypeOfConnection(){
     return connectionType;
 }
 
+// Loop to read user util exit
 void ReadUserCommand(SOCKET sock){
     int end = -1;
     int err = -1;
@@ -154,32 +155,23 @@ void ReadUserCommand(SOCKET sock){
             // List files
             char buff[buffLength];
             if(send(sock, cmdListFiles, buffLength, 0) != SOCKET_ERROR){
-                err = recv(sock, buff, buffLength, 0);
-                if(err != SOCKET_ERROR){
-                    printf("List Files : %s", buff);
-                }
-                else{
-                    printf(ERR_RCV);
-                }
             }
             else{
                 printf(ERR_SND);
             }
         }
         else if(strcmp(input, cmdUploadFile) == 0){
-                 // UploadFile
+            // UploadFile
             if(send(sock, cmdUploadFile, buffLength, 0) != SOCKET_ERROR){
                 char path[buffLength];
                 char msg[buffLength];
                 char endMsg[buffLength] = "done";
                 int size;
-                int offset;
                 int remain_data;
-                int sent_bytes = 0;
-                char c;
                 printf("File path : ");
                 scanf("%s", path);
                 FILE *fs = fopen(path, "rb");
+
                 if(fs != NULL)
                 {
                     printf("file found\n");
@@ -196,12 +188,9 @@ void ReadUserCommand(SOCKET sock){
                         // send  size
                         if(send(sock, msg, buffLength, 0) != SOCKET_ERROR){
 
-                            offset = 0;
                             remain_data = size;
                             char get_c;
                             // send file
-                            size = 1;
-                            int done = 0;
                             while ((get_c = fgetc(fs)) != EOF)
                             {
                                 //size = fread(msg, buffLength, 1, fs);
@@ -212,12 +201,8 @@ void ReadUserCommand(SOCKET sock){
                                 if(send(sock, msg, buffLength, 0) != SOCKET_ERROR){
                                     //printf("sending %s", msg);
                                 }
-                                remain_data -= sizeof(msg)/sizeof(msg[0]);
+                                remain_data--;
                                 printf("byte remaining to send : %d\n", remain_data);
-                                if(done == 0){
-                                    done++;
-                                    size=1;
-                                }
                             }
 
                             if(send(sock, endMsg, buffLength, 0) != SOCKET_ERROR){
@@ -228,12 +213,17 @@ void ReadUserCommand(SOCKET sock){
                     fclose(fs);
                 }
                 else{
-                    printf("ERROR: File %s not found.\n", "test.png");
+                    printf("ERROR: File %s not found.\n", path);
                 }
             }
         }
         else if(strcmp(input, cmdDownloadFile) == 0){
             // Download File
+            send(sock, cmdDownloadFile, buffLength, 0);
+            char file[buffLength];
+            printf("File to download ! ");
+            scanf("%s", file);
+            send(sock, file, buffLength, 0);
         }
         else if(strcmp(input, cmdPublicMsg) == 0){
 
@@ -282,10 +272,11 @@ void ReadUserCommand(SOCKET sock){
         else{
             printf("Unknown command. Use #Help to see list of command\n");
         }
-        wait(1);
     }
 }
 
+
+// Connect user to access server
 void Connect(SOCKET sock){
     int connected = -1;
     int err;
@@ -325,6 +316,7 @@ void Connect(SOCKET sock){
     }
 }
 
+// Thread that listen and display every message received
 void *messageListener(void *socket_desc){
     printf("Thread Started\n");
     char buff[buffLength];
@@ -332,15 +324,44 @@ void *messageListener(void *socket_desc){
 
     while(1){
         if(recv(sock, buff, buffLength, 0) != SOCKET_ERROR){
-            printf("\n%s", buff);
+            if(strcmp(buff, "#file") == 0){
+                //receive file name
+                if(recv(sock, buff, buffLength, 0) != SOCKET_ERROR){
+                    printf("ready to receive file %s\n", buff);
+                    FILE *fr = fopen(buff, "wb");
+
+                    if(fr != NULL){
+                        printf("File %s opened.\n", buff);
+
+                        //receive file
+                        int done = -1;
+                        while(done < 0){
+                            if(recv(sock, buff, buffLength, 0) != SOCKET_ERROR){
+                                if(strcmp(buff, "done") == 0){
+                                    done = 1;
+                                    printf("\nReceived done\n");
+                                }
+                                else{
+                                    fputc( buff[0], fr);
+                                }
+                            }
+                        }
+                        fclose(fr);
+                    }
+                    else{
+                        printf("File %s Cannot be opened.\n", buff);
+                    }
+                }
+
+            }
+            else{
+                printf("\n%s", buff);
+            }
         }
     }
 }
 
 
-void wait(int s){
-    for(int i = 0; i < s * 100000000; i++){}
-}
 
 
 

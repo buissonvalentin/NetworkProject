@@ -28,9 +28,8 @@
 #define ERR_RCV  "Socket error receiving message\n"
 #define ERR_SND  "Socket error sending message\n"
 
-#define cmdTCreate "#Crt"
-#define cmdTDelete "#Dlt"
-#define cmdTModify "#Mdf"
+#define cmdTCreate "#Create"
+#define cmdTDelete "#Delete"
 #define cmdTHelp "#Help"
 #define cmdTExit "#Exit"
 
@@ -57,8 +56,10 @@ int CheckCredentials(char username[], char password[]);
 void ConnectUser(SOCKET sock, int *index);
 void *connection_handler(void *socket_desc);
 void CreateBDD();
+void ShowDatabase();
 void SendToAll(char* msg);
 const char* GetFilesList();
+void Terminale();
 int callback(void *NotUsed, int argc, char **argv,char **azColName);
 
 
@@ -88,6 +89,7 @@ int main(void){
 
 
     CreateBDD();
+    ShowDatabase();
 
     // Get connection type
     connectionType = GetTypeOfConnection();
@@ -135,42 +137,7 @@ int main(void){
 
     }
     if(connectionType == TERMINALE){
-        while(listening){
-            char command[10];
-            printf("\nEnter command (Use %s for help) : ", cmdTHelp);
-            scanf("%s", command);
-
-            if(strcmp(command, cmdTExit) == 0){
-                listening = 0;
-                printf("Closing terminale");
-            }
-            else if(strcmp(command, cmdTHelp) == 0){
-                printf("\n%s : Close terminale\n", cmdTExit);
-                printf("%s : Create a user in db\n", cmdTCreate);
-                printf("%s : Delete user from db\n", cmdTDelete);
-                printf("%s : modify a user in db\n", cmdTModify);
-            }
-            else if(strcmp(command, cmdTCreate) == 0){
-
-                char username[50];
-                char password[50];
-                printf("\nCreating New User");
-                printf("\nUsername : ");
-                scanf("%s", username);
-                printf("\Password : ");
-                scanf("%s", password);
-
-            }
-            else if(strcmp(command, cmdTDelete) == 0){
-
-            }
-            else if(strcmp(command, cmdTModify) == 0){
-
-            }
-            else{
-                printf("Unknown Command");
-            }
-        }
+        Terminale();
     }
 
 
@@ -210,6 +177,7 @@ void *connection_handler(void *socket_desc){
         if(recv(sock, buff, buffLength, 0) != SOCKET_ERROR){
 
             if(strcmp(buff, cmdListUsers) == 0){
+                //list users
                 printf("%s requested\n", cmdListUsers);
                 char *list;
                 list = GetConnectedUsers();
@@ -223,6 +191,7 @@ void *connection_handler(void *socket_desc){
                 }
             }
             else if(strcmp(buff, cmdListFiles) == 0){
+                // list files
                 printf("%s requested", cmdListFiles);
                 char *list;
                 list = GetFilesList();
@@ -235,7 +204,9 @@ void *connection_handler(void *socket_desc){
                     printf(ERR_SND);
                 }
             }
+            // list file
             else if(strcmp(buff, cmdUploadFile) == 0){
+                // upload file
                 printf("%s requested", cmdUploadFile);
                 char path[buffLength];
                 char rcv[buffLength];
@@ -262,10 +233,10 @@ void *connection_handler(void *socket_desc){
 
                                     }
                                     else{
-                                        printf("received : %s", rcv);
+                                        //printf("received : %s", rcv);
                                         fputc( rcv[0], fr);
-                                        size -= (sizeof(rcv)/sizeof(rcv[0]));
-                                        printf("remaining bytes %d\n", size);
+                                        size--;
+                                        //printf("remaining bytes %d\n", size);
                                     }
                                 }
                             }
@@ -277,9 +248,49 @@ void *connection_handler(void *socket_desc){
                     }
                 }
             }
+            // download file
             else if(strcmp(buff, cmdDownloadFile) == 0){
                 printf("%s requested", cmdDownloadFile);
+                char file[buffLength];
+                char startMsg[buffLength] = "#file";
+                if(recv(sock, file, buffLength, 0) != SOCKET_ERROR){
+                    char msg[buffLength];
+                    char endMsg[buffLength] = "done";
+
+                    FILE *fs = fopen(file, "rb");
+
+                    if(fs != NULL){
+
+                        printf("file found\n");
+                        // send file name
+                        send(sock, startMsg, buffLength, 0);
+                        send(sock, file, buffLength, 0);
+
+                        char get_c;
+                        while ((get_c = fgetc(fs)) != EOF)
+                        {
+                            //size = fread(msg, buffLength, 1, fs);
+
+                            printf("sending data : %c\n", get_c);
+                            msg[0] = get_c;
+                            msg[1] = '\0';
+                            send(sock, msg, buffLength, 0);
+                        }
+
+                        if(send(sock, endMsg, buffLength, 0) != SOCKET_ERROR){
+                            printf("sending done");
+                        }
+
+
+                        fclose(fs);
+                    }
+                    else{
+                        printf("ERROR: File %s not found.\n", file);
+                    }
+
+                }
             }
+            // private message
             else if(strcmp(buff, cmdPrvtMsg) == 0){
                 printf("%s requested\n", cmdPrvtMsg);
                 char userdest[buffLength];
@@ -318,9 +329,9 @@ void *connection_handler(void *socket_desc){
             }
         }
     }
-    printf("User disconnected : %s", usernames[index]);
+    printf("User disconnected : %s\n", usernames[index]);
     connectedUsers[index] = -1;
-    printf("Thread finished");
+    printf("Thread finished\n");
 }
 
 
@@ -332,22 +343,22 @@ void CreateBDD(){
 
     connectIndex = 0;
     int rc = sqlite3_open(name_database, &db);
-    printf("\nRC open Database = %d\n",rc);
+    //printf("\nRC open Database = %d\n",rc);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
         sqlite3_close(db);
         return 1;
     }
 
-    sql = "DROP TABLE IF EXISTS user;"
-                "CREATE TABLE user(id INT, username TEXT, password TEXT, socketIndex INT);"
-                "INSERT INTO user VALUES(1, 'v', '1', -1);"
-                "INSERT INTO user VALUES(2, 'a', '1', -1);"
-                "INSERT INTO user VALUES(3, 'b', '1', -1);"
-                "INSERT INTO user VALUES(4, 'c', '1', -1);";
+    sql = "CREATE TABLE IF NOT EXISTS user(id INT, username TEXT, password TEXT, socketIndex INT);"
+          "UPDATE user SET socketIndex = -1";
+                //"INSERT INTO user VALUES(1, 'v', '1', -1);"
+                //"INSERT INTO user VALUES(2, 'a', '1', -1);"
+                //"INSERT INTO user VALUES(3, 'b', '1', -1);"
+                //"INSERT INTO user VALUES(4, 'c', '1', -1);";
 
     rc = sqlite3_exec(db, sql, 0, 0, &err_msg);
-    printf("\nRC sqltite_exec = %d -> %s \n\n",rc,sql);
+    //printf("\nRC sqltite_exec = %d -> %s \n\n",rc,sql);
 
     if (rc != SQLITE_OK ) {
         fprintf(stderr, "SQL error: %s\n", err_msg);
@@ -356,6 +367,27 @@ void CreateBDD(){
         return 1;
     } else {
         fprintf(stdout, "Table users created successfully\n");
+    }
+    printf("Database created\n");
+}
+
+
+// Display content of database
+void ShowDatabase(){
+    char *sql;
+    sqlite3_stmt *res;
+    int step;
+
+    sql = "SELECT id, username, password, socketIndex FROM user";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+
+    if (rc == SQLITE_OK) {
+    } else {
+        fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+    }
+
+    while ((step = sqlite3_step(res) == SQLITE_ROW)) {
+        printf("id : %d; username : %s; password : %s; socketindex : %d\n",sqlite3_column_int(res, 0), sqlite3_column_text(res, 1), sqlite3_column_text(res, 2), sqlite3_column_int(res, 3));
     }
 }
 
@@ -504,21 +536,98 @@ int GetUserSocketIndex(char username[]){
 // Return a list of all files in current directory
 const char* GetFilesList(){
     DIR *d;
-    char *listFiles;
+    char *listFiles = "";
+    char listTemp[buffLength] = "";
     struct dirent *dir;
     d = opendir(".");
     if (d)
     {
+        printf("dir opened");
         while ((dir = readdir(d)) != NULL)
         {
-            strcat(listFiles, dir->d_name);
-            strcat(listFiles, "\n");
+
+            strcat(listTemp, dir->d_name);
+            strcat(listTemp, "\n");
 
         }
         closedir(d);
     }
+
+    listFiles = listTemp;
     return listFiles;
 }
 
 
+void Terminale(){
+    int listening = 1;
+    while(listening){
+        char command[10];
+        printf("Database : \n");
+        ShowDatabase();
+
+        printf("\n\n\nEnter command (Use %s for help) : ", cmdTHelp);
+        scanf("%s", command);
+
+        if(strcmp(command, cmdTExit) == 0){
+            listening = 0;
+            printf("Closing terminale");
+        }
+        else if(strcmp(command, cmdTHelp) == 0){
+            printf("\n%s : Close terminale\n", cmdTExit);
+            printf("%s : Create a user in db\n", cmdTCreate);
+            printf("%s : Delete user from db\n", cmdTDelete);
+        }
+        else if(strcmp(command, cmdTCreate) == 0){
+
+            char *sql;
+            sqlite3_stmt *res;
+            int step;
+            char username[50];
+            char password[50];
+
+            printf("\nCreating New User\n");
+            printf("Username : ");
+            scanf("%s", username);
+            printf("Password : ");
+            scanf("%s", password);
+            sql = "INSERT INTO user (username, password) VALUES (? , ?)";
+            int rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+            if (rc == SQLITE_OK) {
+                sqlite3_bind_text(res, 1, username, -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(res, 2, password, -1, SQLITE_TRANSIENT);
+            } else {
+                fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+            }
+
+            while ((step = sqlite3_step(res) == SQLITE_ROW)) {
+            }
+
+        }
+        else if(strcmp(command, cmdTDelete) == 0){
+            char *sql;
+            sqlite3_stmt *res;
+            int step;
+            char username[50];
+
+            printf("\Deleting User\n");
+            printf("Username : ");
+            scanf("%s", username);
+            sql = "DELETE FROM user WHERE username = ?";
+            int rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+            if (rc == SQLITE_OK) {
+                sqlite3_bind_text(res, 1, username, -1, SQLITE_TRANSIENT);
+            } else {
+                fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+            }
+
+            while ((step = sqlite3_step(res) == SQLITE_ROW)) {
+            }
+
+        }
+        else{
+            printf("Unknown Command");
+        }
+    }
+
+}
 
