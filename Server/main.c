@@ -32,6 +32,8 @@
 #define cmdTDelete "#Delete"
 #define cmdTHelp "#Help"
 #define cmdTExit "#Exit"
+#define cmdTShowLog "#Logs"
+#define cmdTShowDatabase "#Database"
 
 #define cmdHelp "#Help"
 #define cmdExit "#Exit"
@@ -51,16 +53,17 @@ char (*usernames[50])[100];
 
 //functions
 int GetTypeOfConnection();
+void TCPConnection();
 const char* GetConnectedUsers();
 int CheckCredentials(char username[], char password[]);
 void ConnectUser(SOCKET sock, int *index);
 void *connection_handler(void *socket_desc);
 void CreateBDD();
+void ShowLogs();
 void ShowDatabase();
 void SendToAll(char* msg);
 const char* GetFilesList();
 void Terminale();
-int callback(void *NotUsed, int argc, char **argv,char **azColName);
 
 
 
@@ -72,17 +75,8 @@ int main(void){
         int erreur = 0;
     #endif
 
-    int temp;
 
-    SOCKET listenSock;
-    SOCKADDR_IN sin;
-    SOCKET clientSock;
-    SOCKADDR_IN csin;
-    socklen_t recsize = sizeof(csin);
-    int count = 0;
-    int sock_err;
-    char buffer[buffLength];
-    pthread_t thread_id;
+
 
     int connectionType = -1;
     int listening = 1;
@@ -97,46 +91,15 @@ int main(void){
 
 
     if(connectionType == TCP){
-        listenSock = socket(AF_INET, SOCK_STREAM, 0);
-        printf("La socket %d est ouverte en mode TCP/IP\n", listenSock);
-
-        /* Configuration */
-        sin.sin_addr.s_addr    = htonl(INADDR_ANY);   /* Adresse IP automatique */
-        sin.sin_family         = AF_INET;             /* Protocole familial (IP) */
-        sin.sin_port           = htons(PORT);         /* Listage du port */
-
-        sock_err = bind(listenSock, (SOCKADDR*)&sin, sizeof(sin));
-
-        if(sock_err != SOCKET_ERROR){
-            sock_err = listen(listenSock, 5);
-            printf("Socket ecoute sur le port %d\n", PORT);
-
-            if(sock_err != SOCKET_ERROR){
-                printf("Patientez pendant que le client se connecte sur le port %d...\n", PORT);
-                while(listening > 0){
-                    clientSock = accept(listenSock, (SOCKADDR*)&csin, &recsize);
-                    printf("Connection accepted\n");
-
-                    if( pthread_create( &thread_id , NULL ,  connection_handler , (void*) &clientSock) < 0)
-                    {
-                        printf("could not create thread\n");
-                        return 1;
-                    }
-
-                    //Now join the thread , so that we dont terminate before the thread
-                    //pthread_join( thread_id , NULL);
-                    printf("Handler assigned\n");
-                }
-            }
-        }
-        printf("Fermeture de la socket...\n");
-        closesocket(listening);
-        printf("Fermeture du serveur terminee\n");
+        Log("info", "Starting TCP server");
+        TCPConnection();
     }
     if(connectionType == UDP){
+        Log("info", "Starting UDP server");
 
     }
     if(connectionType == TERMINALE){
+        Log("info", "Starting Terminal");
         Terminale();
     }
 
@@ -160,6 +123,58 @@ int GetTypeOfConnection(){
 }
 
 
+// Initiate a TCP server
+void TCPConnection(){
+    SOCKET listenSock;
+    SOCKADDR_IN sin;
+    SOCKET clientSock;
+    SOCKADDR_IN csin;
+    socklen_t recsize = sizeof(csin);
+    int sock_err;
+    int listening = 1;
+    pthread_t thread_id;
+    listenSock = socket(AF_INET, SOCK_STREAM, 0);
+
+        /* Configuration */
+    sin.sin_addr.s_addr    = htonl(INADDR_ANY);   /* Adresse IP automatique */
+    sin.sin_family         = AF_INET;             /* Protocole familial (IP) */
+    sin.sin_port           = htons(PORT);         /* Listage du port */
+
+    sock_err = bind(listenSock, (SOCKADDR*)&sin, sizeof(sin));
+
+    if(sock_err != SOCKET_ERROR){
+        sock_err = listen(listenSock, 5);
+        printf("Socket ecoute sur le port %d\n", PORT);
+        Log("info", "Socket listen on port 8080");
+
+        if(sock_err != SOCKET_ERROR){
+            printf("Patientez pendant que le client se connecte sur le port %d...\n", PORT);
+            while(listening > 0){
+                clientSock = accept(listenSock, (SOCKADDR*)&csin, &recsize);
+                printf("Connection accepted\n");
+                Log("info", "Socket Connected");
+
+                if( pthread_create( &thread_id , NULL ,  connection_handler , (void*) &clientSock) < 0)
+                {
+                    printf("could not create thread \n");
+                    Log("error", "Could not start thread");
+                    return 1;
+                }
+
+                //Now join the thread , so that we dont terminate before the thread
+                //pthread_join( thread_id , NULL);
+                printf("Handler assigned\n");
+                Log("info", "Thread started");
+            }
+        }
+    }
+    printf("Fermeture de la socket...\n");
+    closesocket(listening);
+    printf("Fermeture du serveur terminee\n");
+    Log("info", "Server closed");
+}
+
+
 // Manage message from users
 void *connection_handler(void *socket_desc){
     char buff[buffLength];
@@ -170,19 +185,23 @@ void *connection_handler(void *socket_desc){
     int err = -1;
     ConnectUser(sock, &index);
     printf("%s Connected\n", usernames[index]);
+    char log[100] = "";
+    strcpy(log, "User connected : ");
+    strcat(log, usernames[index]);
+    Log("info", log);
 
 
 
     while(finnish < 0){
         if(recv(sock, buff, buffLength, 0) != SOCKET_ERROR){
 
-            if(strcmp(buff, cmdListUsers) == 0){
+            if(strcmp(buff, cmdListUsers) == 0){ // List Users
                 //list users
                 printf("%s requested\n", cmdListUsers);
                 char *list;
                 list = GetConnectedUsers();
                 char buff[buffLength]= "";
-                strcat(buff, "List users : ");
+                strcat(buff, "List users : \n");
                 strcat(buff, list);
 
                 int err = send(sock, buff, buffLength, 0);
@@ -190,7 +209,7 @@ void *connection_handler(void *socket_desc){
                     printf(ERR_SND);
                 }
             }
-            else if(strcmp(buff, cmdListFiles) == 0){
+            else if(strcmp(buff, cmdListFiles) == 0){  // List File
                 // list files
                 printf("%s requested", cmdListFiles);
                 char *list;
@@ -202,10 +221,10 @@ void *connection_handler(void *socket_desc){
                 int err = send(sock, buff, buffLength, 0);
                 if(err == SOCKET_ERROR){
                     printf(ERR_SND);
+                    Log("error", ERR_SND);
                 }
             }
-            // list file
-            else if(strcmp(buff, cmdUploadFile) == 0){
+            else if(strcmp(buff, cmdUploadFile) == 0){ // Upload
                 // upload file
                 printf("%s requested", cmdUploadFile);
                 char path[buffLength];
@@ -230,13 +249,12 @@ void *connection_handler(void *socket_desc){
                                     if(strcmp(rcv, "done") == 0){
                                         done = 1;
                                         printf("\nReceived done\n");
+                                        Log("info", "file received");
 
                                     }
                                     else{
-                                        //printf("received : %s", rcv);
                                         fputc( rcv[0], fr);
                                         size--;
-                                        //printf("remaining bytes %d\n", size);
                                     }
                                 }
                             }
@@ -245,11 +263,11 @@ void *connection_handler(void *socket_desc){
                     }
                     else{
                         printf("File %s Cannot be opened.\n", path);
+                        Log("error", "could not open file");
                     }
                 }
             }
-            // download file
-            else if(strcmp(buff, cmdDownloadFile) == 0){
+            else if(strcmp(buff, cmdDownloadFile) == 0){ // Download
                 printf("%s requested", cmdDownloadFile);
                 char file[buffLength];
                 char startMsg[buffLength] = "#file";
@@ -279,6 +297,7 @@ void *connection_handler(void *socket_desc){
 
                         if(send(sock, endMsg, buffLength, 0) != SOCKET_ERROR){
                             printf("sending done");
+                            Log("info", "File send");
                         }
 
 
@@ -286,12 +305,12 @@ void *connection_handler(void *socket_desc){
                     }
                     else{
                         printf("ERROR: File %s not found.\n", file);
+                        Log("error", "Could Not open file");
                     }
 
                 }
             }
-            // private message
-            else if(strcmp(buff, cmdPrvtMsg) == 0){
+            else if(strcmp(buff, cmdPrvtMsg) == 0){// private message
                 printf("%s requested\n", cmdPrvtMsg);
                 char userdest[buffLength];
                 char message[buffLength];
@@ -308,7 +327,7 @@ void *connection_handler(void *socket_desc){
                     }
                 }
             }
-            else if(strcmp(buff, cmdPublicMsg) == 0){
+            else if(strcmp(buff, cmdPublicMsg) == 0){ // public message
                 char buff[buffLength];
                 char msg[buffLength] = "Public message from ";
                 printf("%s requested", cmdPublicMsg);
@@ -319,7 +338,7 @@ void *connection_handler(void *socket_desc){
                     SendToAll(msg);
                 }
             }
-            else if(strcmp(buff, cmdExit) == 0){
+            else if(strcmp(buff, cmdExit) == 0){ // exit
                 printf("%s requested", cmdExit);
                 shutdown(sock, 2);
                 finnish = 1;
@@ -330,6 +349,9 @@ void *connection_handler(void *socket_desc){
         }
     }
     printf("User disconnected : %s\n", usernames[index]);
+    strcpy(log, "User disconnected : ");
+    strcat(log, usernames[index]);
+    Log("info", log);
     connectedUsers[index] = -1;
     printf("Thread finished\n");
 }
@@ -351,7 +373,8 @@ void CreateBDD(){
     }
 
     sql = "CREATE TABLE IF NOT EXISTS user(id INT, username TEXT, password TEXT, socketIndex INT);"
-          "UPDATE user SET socketIndex = -1";
+          "UPDATE user SET socketIndex = -1;"
+          "CREATE TABLE IF NOT EXISTS log(type TEXT, content TEXT);";
                 //"INSERT INTO user VALUES(1, 'v', '1', -1);"
                 //"INSERT INTO user VALUES(2, 'a', '1', -1);"
                 //"INSERT INTO user VALUES(3, 'b', '1', -1);"
@@ -369,6 +392,47 @@ void CreateBDD(){
         fprintf(stdout, "Table users created successfully\n");
     }
     printf("Database created\n");
+    Log("info", "Database created");
+}
+
+
+// Add a log into database
+void Log(char *type, char *content){
+    char *sql;
+    sqlite3_stmt *res;
+    int step;
+
+    sql = "INSERT INTO log (type, content) VALUES (? , ?)";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(res, 1, type, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(res, 2, content, -1, SQLITE_TRANSIENT);
+    } else {
+        fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+    }
+
+    while ((step = sqlite3_step(res) == SQLITE_ROW)) {
+    }
+}
+
+
+//Show all logs
+void ShowLogs(){
+    char *sql;
+    sqlite3_stmt *res;
+    int step;
+
+    sql = "SELECT type, content FROM log";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+
+    if (rc == SQLITE_OK) {
+    } else {
+        fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+    }
+
+    while ((step = sqlite3_step(res) == SQLITE_ROW)) {
+        printf("%s : %s\n",sqlite3_column_text(res, 0), sqlite3_column_text(res, 1));
+    }
 }
 
 
@@ -419,7 +483,7 @@ void ConnectUser(SOCKET sock, int *index){
                     connectedUsers[connectIndex] = sock;
                     *index = connectIndex;
                     usernames[connectIndex] = username;
-                    connectIndex++;
+                    connectIndex += 1;
                 }
                 else{
                     printf(ERR_SND);
@@ -467,6 +531,7 @@ int CheckCredentials(char username[], char password[]){
         } else {
             fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
             return result;
+            Log("error", "error database");
         }
 
         while ((stepU = sqlite3_step(resUpdate) == SQLITE_ROW)) {
@@ -484,7 +549,7 @@ int CheckCredentials(char username[], char password[]){
 
 // Return a list of all connected users
 const char* GetConnectedUsers(){
-    char list[] = "";
+    char list[buffLength] = "";
     char* l = "";
     char *sql;
     int step;
@@ -500,6 +565,7 @@ const char* GetConnectedUsers(){
     }
 
     l = list;
+    printf("list : %s", l);
     return l;
 }
 
@@ -562,20 +628,22 @@ void Terminale(){
     int listening = 1;
     while(listening){
         char command[10];
-        printf("Database : \n");
-        ShowDatabase();
 
-        printf("\n\n\nEnter command (Use %s for help) : ", cmdTHelp);
+
+        printf("\nEnter command (Use %s for help) : ", cmdTHelp);
         scanf("%s", command);
 
         if(strcmp(command, cmdTExit) == 0){
             listening = 0;
-            printf("Closing terminale");
+            printf("Closing terminal");
+            Log("info", "Terminal closed");
         }
         else if(strcmp(command, cmdTHelp) == 0){
             printf("\n%s : Close terminale\n", cmdTExit);
             printf("%s : Create a user in db\n", cmdTCreate);
             printf("%s : Delete user from db\n", cmdTDelete);
+            printf("%s : Show database\n", cmdTShowDatabase);
+            printf("%s : Show logs\n", cmdTShowLog);
         }
         else if(strcmp(command, cmdTCreate) == 0){
 
@@ -601,6 +669,7 @@ void Terminale(){
 
             while ((step = sqlite3_step(res) == SQLITE_ROW)) {
             }
+            Log("info", "User created");
 
         }
         else if(strcmp(command, cmdTDelete) == 0){
@@ -609,7 +678,7 @@ void Terminale(){
             int step;
             char username[50];
 
-            printf("\Deleting User\n");
+            printf("\nDeleting User\n");
             printf("Username : ");
             scanf("%s", username);
             sql = "DELETE FROM user WHERE username = ?";
@@ -622,7 +691,13 @@ void Terminale(){
 
             while ((step = sqlite3_step(res) == SQLITE_ROW)) {
             }
-
+            Log("info", "User deleted");
+        }
+        else if(strcmp(command, cmdTShowLog) == 0){
+            ShowLogs();
+        }
+        else if(strcmp(command, cmdTShowDatabase) == 0){
+            ShowDatabase();
         }
         else{
             printf("Unknown Command");

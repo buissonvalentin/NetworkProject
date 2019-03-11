@@ -221,7 +221,7 @@ void ReadUserCommand(SOCKET sock){
             // Download File
             send(sock, cmdDownloadFile, buffLength, 0);
             char file[buffLength];
-            printf("File to download ! ");
+            printf("File to download : ");
             scanf("%s", file);
             send(sock, file, buffLength, 0);
         }
@@ -318,7 +318,7 @@ void Connect(SOCKET sock){
 
 // Thread that listen and display every message received
 void *messageListener(void *socket_desc){
-    printf("Thread Started\n");
+
     char buff[buffLength];
     int sock = *(int*)socket_desc;
 
@@ -358,6 +358,7 @@ void *messageListener(void *socket_desc){
                 printf("\n%s", buff);
             }
         }
+        printf("\nEntrez votre commande(Use %s for help) : ", cmdHelp);
     }
 }
 
