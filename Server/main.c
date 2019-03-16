@@ -53,7 +53,7 @@ char (*usernames[50])[100];
 
 //functions
 int GetTypeOfConnection();
-void TCPConnection();
+void SetUpTCPServer();
 const char* GetConnectedUsers();
 int CheckCredentials(char username[], char password[]);
 void ConnectUser(SOCKET sock, int *index);
@@ -61,29 +61,28 @@ void *connection_handler(void *socket_desc);
 void CreateBDD();
 void ShowLogs();
 void ShowDatabase();
+int GetUserSocketIndex(char username[]);
 void SendToAll(char* msg);
 const char* GetFilesList();
 void Terminale();
+void SetUpUDPServer();
+void Log(char *type, char *content);
 
 
 
 int main(void){
     #if defined (WIN32)
         WSADATA WSAData;
-        int erreur = WSAStartup(MAKEWORD(2,2), &WSAData);
+        WSAStartup(MAKEWORD(2,2), &WSAData);
     #else
         int erreur = 0;
     #endif
 
 
-
-
     int connectionType = -1;
-    int listening = 1;
 
 
     CreateBDD();
-    ShowDatabase();
 
     // Get connection type
     connectionType = GetTypeOfConnection();
@@ -92,10 +91,11 @@ int main(void){
 
     if(connectionType == TCP){
         Log("info", "Starting TCP server");
-        TCPConnection();
+        SetUpTCPServer();
     }
     if(connectionType == UDP){
         Log("info", "Starting UDP server");
+        SetUpUDPServer();
 
     }
     if(connectionType == TERMINALE){
@@ -124,7 +124,7 @@ int GetTypeOfConnection(){
 
 
 // Initiate a TCP server
-void TCPConnection(){
+void SetUpTCPServer(){
     SOCKET listenSock;
     SOCKADDR_IN sin;
     SOCKET clientSock;
@@ -158,7 +158,6 @@ void TCPConnection(){
                 {
                     printf("could not create thread \n");
                     Log("error", "Could not start thread");
-                    return 1;
                 }
 
                 //Now join the thread , so that we dont terminate before the thread
@@ -182,7 +181,6 @@ void *connection_handler(void *socket_desc){
 
     int index = -1;
     int finnish = -1;
-    int err = -1;
     ConnectUser(sock, &index);
     printf("%s Connected\n", usernames[index]);
     char log[100] = "";
@@ -369,7 +367,6 @@ void CreateBDD(){
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
         sqlite3_close(db);
-        return 1;
     }
 
     sql = "CREATE TABLE IF NOT EXISTS user(id INT, username TEXT, password TEXT, socketIndex INT);"
@@ -387,7 +384,7 @@ void CreateBDD(){
         fprintf(stderr, "SQL error: %s\n", err_msg);
         sqlite3_free(err_msg);
         sqlite3_close(db);
-        return 1;
+        return;
     } else {
         fprintf(stdout, "Table users created successfully\n");
     }
@@ -499,7 +496,6 @@ void ConnectUser(SOCKET sock, int *index){
 
 // Check credential in db and set index in db
 int CheckCredentials(char username[], char password[]){
-    char *err_msg = 0;
     char *sqlSelect;
     char *sqlUpdate;
     sqlite3_stmt *resSelect;
@@ -556,7 +552,7 @@ const char* GetConnectedUsers(){
     sqlite3_stmt *res;
 
     sql = "SELECT username FROM user WHERE socketIndex > ?";
-    int rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+    sqlite3_prepare_v2(db, sql, -1, &res, 0);
     sqlite3_bind_int(res, 1, -1);
 
     while ((step = sqlite3_step(res) == SQLITE_ROW)){
@@ -588,7 +584,7 @@ int GetUserSocketIndex(char username[]){
     sqlite3_stmt *res;
 
     sql = "SELECT socketIndex FROM user WHERE username = ?";
-    int rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+    sqlite3_prepare_v2(db, sql, -1, &res, 0);
     sqlite3_bind_text(res, 1, username, -1, SQLITE_TRANSIENT);
 
     while ((step = sqlite3_step(res) == SQLITE_ROW)){
@@ -624,6 +620,7 @@ const char* GetFilesList(){
 }
 
 
+// Start a terminal to update and show the database
 void Terminale(){
     int listening = 1;
     while(listening){
@@ -706,3 +703,154 @@ void Terminale(){
 
 }
 
+
+// Start UDP Connection
+void SetUpUDPServer(){
+    SOCKET s;
+	struct sockaddr_in server, si_other;
+	int slen , recv_len;
+	char command[buffLength];
+	WSADATA wsa;
+	int finnish = -1;
+
+	slen = sizeof(si_other) ;
+
+	//Initialise winsock
+	printf("\nInitialising Winsock...");
+	if (WSAStartup(MAKEWORD(2,2),&wsa) != 0)
+	{
+		printf("Failed. Error Code : %d",WSAGetLastError());
+		exit(EXIT_FAILURE);
+	}
+	printf("Initialised.\n");
+
+	//Create a socket
+	if((s = socket(AF_INET , SOCK_DGRAM , 0 )) == INVALID_SOCKET)
+	{
+		printf("Could not create socket : %d" , WSAGetLastError());
+	}
+	printf("Socket created.\n");
+
+	//Prepare the sockaddr_in structure
+	server.sin_family = AF_INET;
+	server.sin_addr.s_addr = INADDR_ANY;
+	server.sin_port = htons( PORT );
+
+	//Bind
+	if( bind(s ,(struct sockaddr *)&server , sizeof(server)) == SOCKET_ERROR)
+	{
+		printf("Bind failed with error code : %d" , WSAGetLastError());
+		exit(EXIT_FAILURE);
+	}
+
+	while(finnish == -1)
+	{
+		//try to receive some data, this is a blocking call
+		if ((recv_len = recvfrom(s, command, buffLength, 0, (struct sockaddr *) &si_other, &slen)) != SOCKET_ERROR){
+
+
+            if(strcmp(command, cmdListFiles) == 0){  // List File
+                // list files
+                printf("%s requested", cmdListFiles);
+                char *list;
+                list = GetFilesList();
+                char buff[buffLength]= "";
+                strcat(buff, "List files : ");
+                strcat(buff, list);
+
+                if (sendto(s, buff, buffLength, 0, (struct sockaddr*) &si_other, &slen) == SOCKET_ERROR)
+                {
+                    printf(ERR_SND);
+                    Log("error", ERR_SND);
+                }
+            }
+            else if(strcmp(command, cmdUploadFile) == 0){ // Upload
+                // upload file
+                printf("%s requested", cmdUploadFile);
+                char path[buffLength];
+                char rcv[buffLength];
+
+                // receive file name
+                if ((recv_len = recvfrom(s, path, buffLength, 0, (struct sockaddr *) &si_other, &slen)) != SOCKET_ERROR)
+                {
+                    printf("ready to receive file %s\n", path);
+                    FILE *fr = fopen(path, "wb");
+
+                    if(fr != NULL){
+                        printf("File %s opened.\n", path);
+
+                        //receive file
+                        int done = -1;
+                        while(done < 0){
+                            if ((recv_len = recvfrom(s, rcv, buffLength, 0, (struct sockaddr *) &si_other, &slen)) != SOCKET_ERROR){
+                                if(strcmp(rcv, "done") == 0){
+                                    done = 1;
+                                    printf("\nReceived done\n");
+                                    Log("info", "file received");
+                                }
+                                else{
+                                    fputc( rcv[0], fr);
+                                }
+                            }
+                        }
+
+                        fclose(fr);
+                    }
+                    else{
+                        printf("File %s Cannot be opened.\n", path);
+                        Log("error", "could not open file");
+                    }
+                }
+            }
+            else if(strcmp(command, cmdDownloadFile) == 0){ // Download
+                printf("%s requested", cmdDownloadFile);
+                char file[buffLength];
+
+                if ((recv_len = recvfrom(s, file, buffLength, 0, (struct sockaddr *) &si_other, &slen)) != SOCKET_ERROR){
+                    char msg[buffLength];
+                    char endMsg[buffLength] = "done";
+
+                    FILE *fs = fopen(file, "rb");
+
+                    if(fs != NULL){
+                        printf("file found\n");
+                        // send file name
+
+                        char get_c;
+                        while ((get_c = fgetc(fs)) != EOF)
+                        {
+                            //size = fread(msg, buffLength, 1, fs);
+                            //printf("sending data : %c\n", get_c);
+                            msg[0] = get_c;
+                            msg[1] = '\0';
+                            sendto(s, msg, buffLength, 0, (struct sockaddr*)&si_other, &slen);
+                        }
+
+                        if (sendto(s, endMsg, buffLength, 0, (struct sockaddr*)&si_other, &slen) == SOCKET_ERROR){
+                            printf("sending done");
+                            Log("info", "File send");
+                        }
+
+
+                        fclose(fs);
+                    }
+                    else{
+                        printf("ERROR: File %s not found.\n", file);
+                        Log("error", "Could Not open file");
+                    }
+
+                }
+            }
+            else if(strcmp(command, cmdExit) == 0){ // exit
+                printf("%s requested", cmdExit);
+                finnish = 1;
+            }
+
+		}
+	}
+
+	closesocket(s);
+	WSACleanup();
+
+	return;
+}
