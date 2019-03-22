@@ -201,6 +201,7 @@ void *connection_handler(void *socket_desc){
                 char buff[buffLength]= "";
                 strcat(buff, "List users : \n");
                 strcat(buff, list);
+                printf("List : %s", buff);
 
                 int err = send(sock, buff, buffLength, 0);
                 if(err == SOCKET_ERROR){
@@ -321,7 +322,11 @@ void *connection_handler(void *socket_desc){
                         strcat(msg, message);
                         printf("sending %s to %s\n", msg, userdest);
                         int destIndex = GetUserSocketIndex(userdest);
-                        send(connectedUsers[destIndex], msg, buffLength, 0);
+                        printf("index : %d", destIndex);
+                        if(destIndex > -1){
+                            send(connectedUsers[destIndex], msg, buffLength, 0);
+                        }
+
                     }
                 }
             }
