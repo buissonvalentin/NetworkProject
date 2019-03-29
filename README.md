@@ -2,7 +2,7 @@
 
 Server and Client in C
 
-##Server
+## Server
 The server can be start in TCP or UDP and can accept up to 50 clients simultaneously
 
 Fonctionnalities:
@@ -15,7 +15,7 @@ Fonctionnalities:
 6) Upload a file to the server
 7) Download a file from the server
 
-###Client
+### Client
 
 The client can connect in UDP or TCP to the server
 Use thread to be able to receive a message at any time
